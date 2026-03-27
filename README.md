@@ -62,7 +62,7 @@ pyproject.toml  — dependencies
 
 - **Single file to modify.** The agent only touches `train.py`. This keeps the scope manageable and diffs reviewable.
 - **Fixed time budget.** Training always runs for exactly 5 minutes, regardless of your specific platform. This means you can expect approx 12 experiments/hour and approx 100 experiments while you sleep. There are two upsides of this design decision. First, this makes experiments directly comparable regardless of what the agent changes (model size, batch size, architecture, etc). Second, this means that autoresearch will find the most optimal model for your platform in that time budget. The downside is that your runs (and results) become not comparable to other people running on other compute platforms.
-- **Self-contained.** No external dependencies beyond PyTorch and a few small packages. No distributed training, no complex configs. One GPU, one file, one metric.
+- **Self-contained.** No external dependencies beyond PyTorch and a few small packages. One file, one metric. Multi-GPU is supported via `torchrun` but single-GPU remains the default.
 
 ## Platform support
 
@@ -79,6 +79,60 @@ Seeing as there seems to be a lot of interest in tinkering with autoresearch on 
 7. You'll want to lower `TOTAL_BATCH_SIZE` a lot, but keep it powers of 2, e.g. down to `2**14` (~16K) or so even, hard to tell.
 
 I think these would be the reasonable hyperparameters to play with. Ask your favorite coding agent for help and copy paste them this guide, as well as the full source code.
+
+## Remote & multi-GPU execution
+
+While the default setup targets a single local GPU, the repo also supports running experiments on remote GPU machines and scaling across multiple GPUs.
+
+### Remote execution
+
+The `remote_run.sh` script is a drop-in replacement for `uv run train.py` that transparently syncs your code to a remote GPU machine, runs training, and streams results back:
+
+```bash
+# Configure your remote host (edit the generated file)
+cp remote.toml.example remote.toml  # or just edit remote.toml directly
+
+# Verify connectivity and GPU
+bash remote_run.sh --check
+
+# Run an experiment remotely (same interface as local)
+bash remote_run.sh > run.log 2>&1
+grep "^val_bpb:" run.log
+```
+
+The script handles: SSH connectivity, code sync via rsync, data preparation on first run, and timeout enforcement on the remote side. Configure the remote host, SSH key, and paths in `remote.toml` (gitignored — credentials stay local).
+
+A `Dockerfile` is included for reproducible environments (CUDA 12.8, Python 3.10, pinned dependencies).
+
+### Multi-GPU distributed training
+
+`train.py` supports multi-GPU training via PyTorch's `torchrun`. Each GPU reads a disjoint subset of training data shards, and gradients are averaged across all GPUs before the optimizer step (including the Muon optimizer's Newton-Schulz orthogonalization). The effective batch size scales linearly with GPU count.
+
+```bash
+# Local multi-GPU (e.g. 4 GPUs)
+uv run torchrun --nproc_per_node=4 train.py
+
+# Remote multi-GPU (set num_gpus in remote.toml)
+bash remote_run.sh > run.log 2>&1
+```
+
+Key details:
+- **Backward compatible** — `uv run train.py` still works for single-GPU, no changes needed.
+- **Same output format** — only rank 0 prints and runs evaluation, so `grep "^val_bpb:" run.log` works identically.
+- **Data requirement** — you need at least as many training shards as GPUs. Download more with `uv run prepare.py --num-shards N`.
+- **5-minute budget unchanged** — each experiment still runs for 5 minutes, but processes more data with more GPUs.
+
+### Project structure (extended)
+
+```
+prepare.py      — constants, data prep + runtime utilities (do not modify)
+train.py        — model, optimizer, training loop (agent modifies this)
+program.md      — agent instructions
+pyproject.toml  — dependencies
+remote_run.sh   — remote GPU execution script
+remote.toml     — remote host configuration (gitignored)
+Dockerfile      — reproducible CUDA environment
+```
 
 ## Notable forks
 
