@@ -663,6 +663,9 @@ print0(f"Estimated FLOPs per token: {num_flops_per_token:e}")
 tokens_per_fwdbwd = DEVICE_BATCH_SIZE * MAX_SEQ_LEN
 assert TOTAL_BATCH_SIZE % tokens_per_fwdbwd == 0
 grad_accum_steps = TOTAL_BATCH_SIZE // tokens_per_fwdbwd
+EFFECTIVE_BATCH = (
+    TOTAL_BATCH_SIZE * WORLD_SIZE
+)  # total tokens per optimizer step across all GPUs
 
 optimizer = model.setup_optimizer(
     unembedding_lr=UNEMBEDDING_LR,
@@ -682,7 +685,7 @@ print0(f"Time budget: {TIME_BUDGET}s")
 print0(f"Gradient accumulation steps: {grad_accum_steps}")
 if IS_DISTRIBUTED:
     print0(
-        f"Distributed: {WORLD_SIZE} GPUs, effective batch = {TOTAL_BATCH_SIZE * WORLD_SIZE:,} tokens"
+        f"Distributed: {WORLD_SIZE} GPUs, effective batch = {EFFECTIVE_BATCH:,} tokens"
     )
 
 # Schedules (all based on progress = training_time / TIME_BUDGET)
@@ -773,12 +776,11 @@ while True:
     smooth_train_loss = ema_beta * smooth_train_loss + (1 - ema_beta) * train_loss_f
     debiased_smooth_loss = smooth_train_loss / (1 - ema_beta ** (step + 1))
     pct_done = 100 * progress
-    effective_batch = TOTAL_BATCH_SIZE * WORLD_SIZE
-    tok_per_sec = int(effective_batch / dt)
+    tok_per_sec = int(EFFECTIVE_BATCH / dt)
     mfu = (
         100
         * num_flops_per_token
-        * effective_batch
+        * EFFECTIVE_BATCH
         / dt
         / (H100_BF16_PEAK_FLOPS * WORLD_SIZE)
     )
@@ -806,8 +808,7 @@ while True:
 
 print0()  # newline after \r training log
 
-effective_batch_total = TOTAL_BATCH_SIZE * WORLD_SIZE
-total_tokens = step * effective_batch_total
+total_tokens = step * EFFECTIVE_BATCH
 
 # Final eval (rank 0 only, then broadcast)
 model.eval()
@@ -828,7 +829,7 @@ startup_time = t_start_training - t_start
 steady_state_mfu = (
     100
     * num_flops_per_token
-    * effective_batch_total
+    * EFFECTIVE_BATCH
     * (step - 10)
     / total_training_time
     / (H100_BF16_PEAK_FLOPS * WORLD_SIZE)

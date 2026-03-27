@@ -21,7 +21,9 @@ get_config() {
     local key="$1"
     local default="${2:-}"
     local val
-    val=$(grep -E "^${key}\s*=" "$CONFIG" 2>/dev/null | head -1 | sed 's/^[^=]*=\s*//' | sed 's/\s*#.*//' | tr -d '"' | tr -d "'")
+    val=$(grep -E "^${key}\s*=" "$CONFIG" 2>/dev/null | head -1 \
+        | sed -E 's/^[^=]*=[[:space:]]*([^#]*).*/\1/' | tr -d '"' | tr -d "'" \
+        | sed 's/[[:space:]]*$//')
     if [ -z "$val" ]; then
         echo "$default"
     else
@@ -29,8 +31,17 @@ get_config() {
     fi
 }
 
+# Validate that a config value contains only safe path characters
+validate_path() {
+    local name="$1" val="$2"
+    if [[ ! "$val" =~ ^[a-zA-Z0-9_./:~-]+$ ]]; then
+        echo "ERROR: '$name' contains unsafe characters: $val" >&2
+        exit 1
+    fi
+}
+
 HOST=$(get_config "host")
-USER=$(get_config "user" "ubuntu")
+REMOTE_USER=$(get_config "user" "ubuntu")
 KEY_PATH=$(get_config "key_path" "~/.ssh/id_rsa")
 WORKSPACE=$(get_config "workspace" "/workspace/autoresearch")
 CACHE_DIR=$(get_config "cache_dir" "/root/.cache/autoresearch")
@@ -43,9 +54,21 @@ RUN_TIMEOUT=$(get_config "run_timeout" "900")
 # Expand tilde in key path
 KEY_PATH="${KEY_PATH/#\~/$HOME}"
 
-SSH_OPTS="-o ConnectTimeout=$CONNECT_TIMEOUT -o StrictHostKeyChecking=accept-new -o BatchMode=yes -i $KEY_PATH"
-SSH_CMD="ssh $SSH_OPTS ${USER}@${HOST}"
-SCP_CMD="scp $SSH_OPTS"
+# Validate inputs that get interpolated into shell commands
+validate_path "host" "$HOST" || true  # host may be empty (caught below)
+validate_path "workspace" "$WORKSPACE"
+validate_path "cache_dir" "$CACHE_DIR"
+validate_path "key_path" "$KEY_PATH"
+[ -n "$IMAGE" ] && validate_path "image" "$IMAGE"
+
+# Build SSH command as a function to ensure proper quoting
+run_ssh() {
+    ssh -o "ConnectTimeout=$CONNECT_TIMEOUT" \
+        -o "StrictHostKeyChecking=accept-new" \
+        -o "BatchMode=yes" \
+        -i "$KEY_PATH" \
+        "${REMOTE_USER}@${HOST}" "$@"
+}
 
 # ---------------------------------------------------------------------------
 # Validation
@@ -67,9 +90,9 @@ fi
 # ---------------------------------------------------------------------------
 
 check_connection() {
-    echo "Checking connectivity to ${USER}@${HOST}..." >&2
-    if ! $SSH_CMD "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader" 2>/dev/null; then
-        echo "ERROR: Cannot reach ${USER}@${HOST} or no GPU detected" >&2
+    echo "Checking connectivity to ${REMOTE_USER}@${HOST}..." >&2
+    if ! run_ssh "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader" 2>/dev/null; then
+        echo "ERROR: Cannot reach ${REMOTE_USER}@${HOST} or no GPU detected" >&2
         exit 1
     fi
     echo "Connection OK, GPU available." >&2
@@ -86,10 +109,10 @@ fi
 
 sync_code() {
     echo "Syncing code to ${HOST}:${WORKSPACE}..." >&2
-    $SSH_CMD "mkdir -p $WORKSPACE" 2>/dev/null
+    run_ssh "mkdir -p '${WORKSPACE}'" 2>/dev/null
 
     rsync -az --delete \
-        -e "ssh $SSH_OPTS" \
+        -e "ssh -o ConnectTimeout=$CONNECT_TIMEOUT -o StrictHostKeyChecking=accept-new -o BatchMode=yes -i $KEY_PATH" \
         --exclude '.git' \
         --exclude '.venv' \
         --exclude '__pycache__' \
@@ -99,7 +122,7 @@ sync_code() {
         --exclude '.remote_state' \
         --exclude 'worktrees' \
         --exclude 'dev' \
-        "$SCRIPT_DIR/" "${USER}@${HOST}:${WORKSPACE}/"
+        "$SCRIPT_DIR/" "${REMOTE_USER}@${HOST}:${WORKSPACE}/"
 
     echo "Code synced." >&2
 }
@@ -110,11 +133,11 @@ sync_code() {
 
 ensure_data() {
     echo "Checking remote data..." >&2
-    if $SSH_CMD "test -d ${CACHE_DIR}/data && test -f ${CACHE_DIR}/tokenizer/tokenizer.pkl" 2>/dev/null; then
+    if run_ssh "test -d '${CACHE_DIR}/data' && test -f '${CACHE_DIR}/tokenizer/tokenizer.pkl'" 2>/dev/null; then
         echo "Remote data OK." >&2
     else
         echo "Data not found on remote. Running prepare.py..." >&2
-        $SSH_CMD "cd $WORKSPACE && uv run prepare.py" >&2
+        run_ssh "cd '${WORKSPACE}' && uv run prepare.py" >&2
         echo "Data preparation complete." >&2
     fi
 }
@@ -134,7 +157,7 @@ run_training() {
     local train_cmd
 
     if [ "$NUM_GPUS" -gt 1 ]; then
-        train_cmd="uv run torchrun --nproc_per_node=$NUM_GPUS train.py"
+        train_cmd="uv run torchrun --nproc_per_node=${NUM_GPUS} train.py"
     else
         train_cmd="uv run train.py"
     fi
@@ -142,16 +165,23 @@ run_training() {
     local remote_cmd
     if [ "$USE_CONTAINER" = "true" ] && [ -n "$IMAGE" ]; then
         remote_cmd="docker run --rm --gpus all \
-            -v ${CACHE_DIR}:/root/.cache/autoresearch \
-            -v ${WORKSPACE}:/workspace/autoresearch \
-            ${IMAGE} $train_cmd"
+            -v '${CACHE_DIR}':/root/.cache/autoresearch \
+            -v '${WORKSPACE}':/workspace/autoresearch \
+            '${IMAGE}' ${train_cmd}"
     else
-        remote_cmd="cd $WORKSPACE && $train_cmd"
+        remote_cmd="cd '${WORKSPACE}' && ${train_cmd}"
     fi
 
-    # Run with timeout. stdout/stderr stream directly to our stdout/stderr,
-    # so the caller's redirection (> run.log 2>&1) captures everything.
-    timeout "$RUN_TIMEOUT" $SSH_CMD "$remote_cmd"
+    # Run with timeout. Exit code 124 = timeout killed the process.
+    local exit_code=0
+    timeout "$RUN_TIMEOUT" run_ssh "$remote_cmd" || exit_code=$?
+
+    if [ "$exit_code" -eq 124 ]; then
+        echo "ERROR: Run timed out after ${RUN_TIMEOUT} seconds" >&2
+        exit 124
+    elif [ "$exit_code" -ne 0 ]; then
+        exit "$exit_code"
+    fi
 }
 
 # ---------------------------------------------------------------------------

@@ -11,8 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Make python3.10 the default python3
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install uv (pinned version for reproducibility)
+ARG UV_VERSION=0.7.12
+RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
 ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /workspace/autoresearch
@@ -21,7 +22,7 @@ WORKDIR /workspace/autoresearch
 COPY pyproject.toml uv.lock .python-version ./
 
 # Install all dependencies (expensive — cached unless deps change)
-RUN uv sync
+RUN uv sync --frozen
 
 # Copy project source
 COPY prepare.py train.py ./
