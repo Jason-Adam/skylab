@@ -1,5 +1,5 @@
 [project]
-name = "autoresearch"
+name = "skylab"
 version = "0.1.0"
 description = "Autonomous pretraining research swarm"
 readme = "README.md"
