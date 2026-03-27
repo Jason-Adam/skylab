@@ -44,7 +44,7 @@ HOST=$(get_config "host")
 REMOTE_USER=$(get_config "user" "ubuntu")
 KEY_PATH=$(get_config "key_path" "~/.ssh/id_rsa")
 WORKSPACE=$(get_config "workspace" "/workspace/skylab")
-CACHE_DIR=$(get_config "cache_dir" "~/.cache/autoresearch")
+CACHE_DIR=$(get_config "cache_dir" "~/.cache/skylab")
 NUM_GPUS=$(get_config "num_gpus" "1")
 USE_CONTAINER=$(get_config "use_container" "false")
 IMAGE=$(get_config "image")
@@ -167,7 +167,7 @@ run_training() {
     local remote_cmd
     if [ "$USE_CONTAINER" = "true" ] && [ -n "$IMAGE" ]; then
         remote_cmd="timeout ${RUN_TIMEOUT} docker run --rm --gpus all \
-            -v '${CACHE_DIR}':/root/.cache/autoresearch \
+            -v '${CACHE_DIR}':/root/.cache/skylab \
             -v '${WORKSPACE}':/workspace/skylab \
             '${IMAGE}' ${train_cmd}"
     else

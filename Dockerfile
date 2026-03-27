@@ -28,4 +28,4 @@ RUN uv sync --frozen
 COPY prepare.py train.py ./
 
 # Data is mounted at runtime, not baked into the image.
-# Mount your data volume at /root/.cache/autoresearch/
+# Mount your data volume at /root/.cache/skylab/
