@@ -44,7 +44,7 @@ HOST=$(get_config "host")
 REMOTE_USER=$(get_config "user" "ubuntu")
 KEY_PATH=$(get_config "key_path" "~/.ssh/id_rsa")
 WORKSPACE=$(get_config "workspace" "/workspace/autoresearch")
-CACHE_DIR=$(get_config "cache_dir" "/root/.cache/autoresearch")
+CACHE_DIR=$(get_config "cache_dir" "~/.cache/autoresearch")
 NUM_GPUS=$(get_config "num_gpus" "1")
 USE_CONTAINER=$(get_config "use_container" "false")
 IMAGE=$(get_config "image")
@@ -162,19 +162,20 @@ run_training() {
         train_cmd="uv run train.py"
     fi
 
+    # Timeout is enforced on the remote side so the training process is killed
+    # even if the SSH connection drops (avoids orphaned GPU jobs).
     local remote_cmd
     if [ "$USE_CONTAINER" = "true" ] && [ -n "$IMAGE" ]; then
-        remote_cmd="docker run --rm --gpus all \
+        remote_cmd="timeout ${RUN_TIMEOUT} docker run --rm --gpus all \
             -v '${CACHE_DIR}':/root/.cache/autoresearch \
             -v '${WORKSPACE}':/workspace/autoresearch \
             '${IMAGE}' ${train_cmd}"
     else
-        remote_cmd="cd '${WORKSPACE}' && ${train_cmd}"
+        remote_cmd="cd '${WORKSPACE}' && timeout ${RUN_TIMEOUT} ${train_cmd}"
     fi
 
-    # Run with timeout. Exit code 124 = timeout killed the process.
     local exit_code=0
-    timeout "$RUN_TIMEOUT" run_ssh "$remote_cmd" || exit_code=$?
+    run_ssh "$remote_cmd" || exit_code=$?
 
     if [ "$exit_code" -eq 124 ]; then
         echo "ERROR: Run timed out after ${RUN_TIMEOUT} seconds" >&2

@@ -29,7 +29,7 @@ The training script runs for a **fixed time budget of 5 minutes** (wall clock tr
 
 If using a remote GPU, verify the connection first: `bash remote_run.sh --check`. The remote host is configured in `remote.toml`.
 
-**Distributed training notes**: `train.py` automatically detects distributed mode via `torchrun` environment variables. Each GPU processes its own copy of the data. Gradients are averaged across GPUs before the optimizer step. The effective batch size scales linearly with GPU count. Only rank 0 prints output and runs evaluation — the output format is identical to single-GPU.
+**Distributed training notes**: `train.py` automatically detects distributed mode via `torchrun` environment variables. Each GPU reads a disjoint shard of the training data (parquet files are partitioned per rank). Gradients are averaged across GPUs before the optimizer step. The effective batch size scales linearly with GPU count. Only rank 0 prints output and runs evaluation — the output format is identical to single-GPU.
 
 **What you CAN do:**
 - Modify `train.py` — this is the only file you edit. Everything is fair game: model architecture, optimizer, hyperparameters, training loop, batch size, model size, etc.

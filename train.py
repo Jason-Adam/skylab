@@ -26,8 +26,8 @@ WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
 IS_DISTRIBUTED = WORLD_SIZE > 1
 
 if IS_DISTRIBUTED:
-    dist.init_process_group(backend="nccl")
     torch.cuda.set_device(LOCAL_RANK)
+    dist.init_process_group(backend="nccl")
 
 from kernels import get_kernel
 
@@ -49,11 +49,12 @@ if IS_DISTRIBUTED:
         all_files = _original_list_parquet_files()
         val_path = os.path.join(prepare.DATA_DIR, prepare.VAL_FILENAME)
         train_files = [f for f in all_files if f != val_path]
-        assert len(train_files) >= WORLD_SIZE, (
-            f"Need at least {WORLD_SIZE} training shards for {WORLD_SIZE} GPUs, "
-            f"but only {len(train_files)} found. Download more shards with: "
-            f"uv run prepare.py --num-shards {WORLD_SIZE + 1}"
-        )
+        if len(train_files) < WORLD_SIZE:
+            raise RuntimeError(
+                f"Need at least {WORLD_SIZE} training shards for {WORLD_SIZE} GPUs, "
+                f"but only {len(train_files)} found. Download more shards with: "
+                f"uv run prepare.py --num-shards {WORLD_SIZE + 1}"
+            )
         rank_files = train_files[RANK::WORLD_SIZE]
         if os.path.exists(val_path):
             rank_files.append(val_path)
@@ -733,9 +734,9 @@ while True:
     # All-reduce gradients across ranks (must happen before optimizer step so
     # Muon's Newton-Schulz orthogonalization sees identical averaged gradients)
     if IS_DISTRIBUTED:
-        for p in model.parameters():
-            if p.grad is not None:
-                dist.all_reduce(p.grad, op=dist.ReduceOp.AVG)
+        grads = [p.grad for p in model.parameters() if p.grad is not None]
+        if grads:
+            dist.all_reduce_coalesced(grads, op=dist.ReduceOp.AVG)
 
     # Progress and schedules
     progress = min(total_training_time / TIME_BUDGET, 1.0)
