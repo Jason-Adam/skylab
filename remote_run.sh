@@ -43,7 +43,7 @@ validate_path() {
 HOST=$(get_config "host")
 REMOTE_USER=$(get_config "user" "ubuntu")
 KEY_PATH=$(get_config "key_path" "~/.ssh/id_rsa")
-WORKSPACE=$(get_config "workspace" "/workspace/autoresearch")
+WORKSPACE=$(get_config "workspace" "/workspace/skylab")
 CACHE_DIR=$(get_config "cache_dir" "~/.cache/autoresearch")
 NUM_GPUS=$(get_config "num_gpus" "1")
 USE_CONTAINER=$(get_config "use_container" "false")
@@ -168,7 +168,7 @@ run_training() {
     if [ "$USE_CONTAINER" = "true" ] && [ -n "$IMAGE" ]; then
         remote_cmd="timeout ${RUN_TIMEOUT} docker run --rm --gpus all \
             -v '${CACHE_DIR}':/root/.cache/autoresearch \
-            -v '${WORKSPACE}':/workspace/autoresearch \
+            -v '${WORKSPACE}':/workspace/skylab \
             '${IMAGE}' ${train_cmd}"
     else
         remote_cmd="cd '${WORKSPACE}' && timeout ${RUN_TIMEOUT} ${train_cmd}"

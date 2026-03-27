@@ -1,7 +1,7 @@
 [project]
-name = "autoresearch"
+name = "skylab"
 version = "0.1.0"
-description = "Autonomous pretraining research swarm"
+description = "Autonomous LLM training research on remote GPU clusters"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

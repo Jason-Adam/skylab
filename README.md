@@ -1,10 +1,10 @@
-# autoresearch
+# skylab
 
 ![teaser](progress.png)
 
-Autonomous LLM training research — give an AI agent a real training setup and let it experiment overnight. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up to a log of experiments and a better model.
+Autonomous LLM training research on remote GPU clusters. Give an AI agent a real training setup and let it experiment overnight — on your local GPU or a remote cluster. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up to a log of experiments and a better model.
 
-Based on [@karpathy's autoresearch](https://github.com/karpathy/autoresearch), extended with remote GPU execution and multi-GPU distributed training support.
+Based on [@karpathy's autoresearch](https://github.com/karpathy/autoresearch), extended with remote GPU execution and multi-GPU distributed training.
 
 ## How it works
 

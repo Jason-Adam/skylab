@@ -16,7 +16,7 @@ ARG UV_VERSION=0.7.12
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
 ENV PATH="/root/.local/bin:$PATH"
 
-WORKDIR /workspace/autoresearch
+WORKDIR /workspace/skylab
 
 # Copy dependency files first (layer caching — only re-install when deps change)
 COPY pyproject.toml uv.lock .python-version ./
