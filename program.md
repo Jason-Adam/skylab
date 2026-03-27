@@ -20,7 +20,16 @@ Once you get confirmation, kick off the experimentation.
 
 ## Experimentation
 
-Each experiment runs on a single GPU. The training script runs for a **fixed time budget of 5 minutes** (wall clock training time, excluding startup/compilation). You launch it simply as: `uv run train.py`.
+The training script runs for a **fixed time budget of 5 minutes** (wall clock training time, excluding startup/compilation).
+
+**Launch command** depends on where the GPU is:
+- **Local, single GPU**: `uv run train.py`
+- **Local, multi-GPU**: `uv run torchrun --nproc_per_node=N train.py`
+- **Remote GPU**: `bash remote_run.sh` (syncs code to remote, runs training, streams results back — set `num_gpus` in `remote.toml` for multi-GPU)
+
+If using a remote GPU, verify the connection first: `bash remote_run.sh --check`. The remote host is configured in `remote.toml`.
+
+**Distributed training notes**: `train.py` automatically detects distributed mode via `torchrun` environment variables. Each GPU processes its own copy of the data. Gradients are averaged across GPUs before the optimizer step. The effective batch size scales linearly with GPU count. Only rank 0 prints output and runs evaluation — the output format is identical to single-GPU.
 
 **What you CAN do:**
 - Modify `train.py` — this is the only file you edit. Everything is fair game: model architecture, optimizer, hyperparameters, training loop, batch size, model size, etc.
@@ -96,7 +105,7 @@ LOOP FOREVER:
 1. Look at the git state: the current branch/commit we're on
 2. Tune `train.py` with an experimental idea by directly hacking the code.
 3. git commit
-4. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
+4. Run the experiment: `uv run train.py > run.log 2>&1` or `bash remote_run.sh > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
 5. Read out the results: `grep "^val_bpb:\|^peak_vram_mb:" run.log`
 6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
 7. Record the results in the tsv (NOTE: do not commit the results.tsv file, leave it untracked by git)

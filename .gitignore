@@ -21,3 +21,8 @@ dev/
 
 # Results file
 results.tsv
+
+# Remote execution state
+remote.toml
+.remote_state
+run.log
