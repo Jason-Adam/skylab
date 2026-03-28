@@ -21,12 +21,16 @@ def get_lr_multiplier(
     elif progress < 1.0 - warmdown_ratio:
         return 1.0
     else:
+        if warmdown_ratio <= 0:
+            return final_lr_frac if progress >= 1.0 else 1.0
         cooldown = (1.0 - progress) / warmdown_ratio
         return cooldown * 1.0 + (1 - cooldown) * final_lr_frac
 
 
 def get_muon_momentum(step: int, ramp_steps: int = 300) -> float:
     """Momentum ramp from 0.85 to 0.95 over ramp_steps."""
+    if ramp_steps <= 0:
+        raise ValueError(f"ramp_steps must be positive, got {ramp_steps}")
     frac = min(step / ramp_steps, 1)
     return (1 - frac) * 0.85 + frac * 0.95
 

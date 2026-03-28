@@ -43,6 +43,10 @@ class TestGetLRMultiplier:
         assert self._lr(0.25) == 1.0
         assert self._lr(0.49) == 1.0
 
+    def test_zero_warmdown_ratio(self) -> None:
+        assert get_lr_multiplier(0.99, WARMUP_RATIO, 0.0, FINAL_LR_FRAC) == 1.0
+        assert get_lr_multiplier(1.0, WARMUP_RATIO, 0.0, FINAL_LR_FRAC) == FINAL_LR_FRAC
+
     def test_warmdown_start(self) -> None:
         assert self._lr(0.5) == pytest.approx(1.0)
 
@@ -90,6 +94,10 @@ class TestGetMuonMomentum:
 
     def test_custom_ramp_steps(self) -> None:
         assert get_muon_momentum(50, ramp_steps=100) == pytest.approx(0.90)
+
+    def test_zero_ramp_steps_raises(self) -> None:
+        with pytest.raises(ValueError, match="ramp_steps must be positive"):
+            get_muon_momentum(10, ramp_steps=0)
 
 
 class TestGetWeightDecay:

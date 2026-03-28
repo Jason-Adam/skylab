@@ -14,6 +14,7 @@ import re
 import subprocess
 import time
 from dataclasses import asdict, dataclass, field
+from html import escape as _esc
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
@@ -71,11 +72,17 @@ class DashboardState:
 # Parsers
 # ---------------------------------------------------------------------------
 
-# Matches: step  142 | 47.3% | loss 3.421 | lr_mult 0.83 | 234.5 ms/step | 12345 tok/sec | mfu 42.1% | epoch 1 | 158.3s remaining
+# Matches train.py output, e.g.:
+# step 00142 (47.3%) | loss: 3.421000 | lrm: 0.83 | dt: 234ms | tok/sec: 12,345 | mfu: 42.1% | epoch: 1 | remaining: 158s
 _PROGRESS_RE = re.compile(
-    r"step\s+(\d+)\s*\|\s*([\d.]+)%\s*\|\s*loss\s+([\d.]+)\s*\|\s*lr_mult\s+([\d.]+)"
-    r"\s*\|\s*([\d.]+)\s*ms/step\s*\|\s*([\d.]+)\s*tok/sec\s*\|\s*mfu\s*([\d.]+)%"
-    r"\s*\|\s*epoch\s+(\d+)\s*\|\s*([\d.]+s\s*remaining)"
+    r"step\s+(\d+)\s*\(([\d.]+)%\)\s*"
+    r"\|\s*loss:\s*([\d.]+)\s*"
+    r"\|\s*lrm:\s*([\d.]+)\s*"
+    r"\|\s*dt:\s*(\d+)ms\s*"
+    r"\|\s*tok/sec:\s*([\d,]+)\s*"
+    r"\|\s*mfu:\s*([\d.]+)%\s*"
+    r"\|\s*epoch:\s*(\d+)\s*"
+    r"\|\s*remaining:\s*(\d+s)"
 )
 
 
@@ -198,8 +205,6 @@ def probe_gpu_status(config: RemoteConfig) -> list[GpuInfo]:
         "ssh",
         "-i",
         key,
-        "-o",
-        "StrictHostKeyChecking=no",
         "-o",
         "ConnectTimeout=5",
         f"{config.user}@{config.host}",
@@ -386,11 +391,11 @@ def render_html(state: DashboardState) -> str:
             rows_html += (
                 f"<tr>"
                 f"<td>{num}</td>"
-                f"<td>{row.get('commit', '')[:7]}</td>"
-                f"<td>{row.get('val_bpb', '')}</td>"
-                f"<td>{row.get('memory_gb', '')}</td>"
-                f'<td style="color:{color}">{st}</td>'
-                f"<td>{row.get('description', '')}</td>"
+                f"<td>{_esc(str(row.get('commit', '')[:7]))}</td>"
+                f"<td>{_esc(str(row.get('val_bpb', '')))}</td>"
+                f"<td>{_esc(str(row.get('memory_gb', '')))}</td>"
+                f'<td style="color:{color}">{_esc(st)}</td>'
+                f"<td>{_esc(str(row.get('description', '')))}</td>"
                 f"</tr>"
             )
         history_panel = f"""
@@ -407,8 +412,8 @@ def render_html(state: DashboardState) -> str:
     # --- Summary panel ---
     if run.summary:
         items = "".join(
-            f'<div class="summary-item"><div class="summary-key">{k}</div>'
-            f'<div class="summary-val">{v}</div></div>'
+            f'<div class="summary-item"><div class="summary-key">{_esc(str(k))}</div>'
+            f'<div class="summary-val">{_esc(str(v))}</div></div>'
             for k, v in run.summary.items()
         )
         summary_panel = f'<div class="panel"><h2>Last Completed Run Summary</h2><div class="summary-grid">{items}</div></div>'
@@ -445,17 +450,27 @@ def generate_report(out_path: Path) -> None:
         return
 
     entries: list[dict[str, Any]] = json.loads(_HISTORY_PATH.read_text())
+    # Build consistent column ordering from all entries
+    summary_keys: list[str] = []
+    seen: set[str] = set()
+    for e in entries:
+        for k in (e.get("summary", {}) or {}).keys():
+            if k not in seen:
+                summary_keys.append(k)
+                seen.add(k)
+
     rows_html = ""
     for e in reversed(entries):
         ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(e.get("timestamp", 0)))
-        commit = e.get("commit", "")[:7]
-        summary = e.get("summary", {})
-        cells = " ".join(f"<td>{v}</td>" for v in summary.values())
+        commit = _esc(e.get("commit", "")[:7])
+        summary = e.get("summary", {}) or {}
+        cells = " ".join(
+            f"<td>{_esc(str(summary.get(k, '')))}</td>" for k in summary_keys
+        )
         rows_html += f"<tr><td>{ts}</td><td>{commit}</td>{cells}</tr>"
 
     if entries:
-        sample = entries[-1].get("summary", {})
-        headers = " ".join(f"<th>{k}</th>" for k in sample.keys())
+        headers = " ".join(f"<th>{_esc(k)}</th>" for k in summary_keys)
         header_row = f"<tr><th>Timestamp</th><th>Commit</th>{headers}</tr>"
     else:
         header_row = "<tr><th>No data</th></tr>"
