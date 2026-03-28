@@ -63,5 +63,8 @@ class ExperimentConfig:
     max_vram_gb: float = 48.0
     max_trial_wall_time: int = 600
 
+    # Resolved path to the experiment directory
+    experiment_dir: str = ""
+
     # Strategy-specific config
     strategy_config: dict[str, object] = field(default_factory=dict)

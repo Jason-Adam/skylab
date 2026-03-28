@@ -168,7 +168,8 @@ def _cmd_run(args: argparse.Namespace) -> None:
             tag=args.tag,
         )
         if best:
-            print(f"\nBest result: val_bpb = {best.val_bpb:.6f} (commit {best.commit})")
+            bpb = f"{best.val_bpb:.6f}" if best.val_bpb is not None else "N/A"
+            print(f"\nBest result: val_bpb = {bpb} (commit {best.commit})")
         else:
             print("\nNo successful trials.", file=sys.stderr)
             sys.exit(1)
@@ -259,11 +260,13 @@ def _print_trial(trial) -> None:
     print(f"Trial #{trial.id}")
     print(f"  Status:      {trial.status}")
     print(
-        f"  val_bpb:     {trial.val_bpb:.6f}" if trial.val_bpb else "  val_bpb:     N/A"
+        f"  val_bpb:     {trial.val_bpb:.6f}"
+        if trial.val_bpb is not None
+        else "  val_bpb:     N/A"
     )
     print(
         f"  VRAM (MB):   {trial.peak_vram_mb:.0f}"
-        if trial.peak_vram_mb
+        if trial.peak_vram_mb is not None
         else "  VRAM (MB):   N/A"
     )
     print(f"  Commit:      {trial.commit}")

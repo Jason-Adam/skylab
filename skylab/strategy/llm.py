@@ -12,6 +12,7 @@ The orchestrator diffs before/after to capture what changed.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 
@@ -119,7 +120,9 @@ class LLMStrategy:
         )
 
         # Snapshot editable files before Claude Code modifies them
-        experiment_dir = self._find_experiment_dir(config)
+        experiment_dir = (
+            Path(config.experiment_dir) if config.experiment_dir else Path(".")
+        )
         snapshots = {}
         for filename in config.editable_files:
             path = experiment_dir / filename
@@ -156,22 +159,9 @@ class LLMStrategy:
     def should_continue(self, history: list[TrialResult]) -> bool:
         return len(history) < self._max_trials
 
-    def _find_experiment_dir(self, config: ExperimentConfig) -> Path:
-        """Find the experiment directory from the config name."""
-        # Try common locations
-        candidates = [
-            Path("experiments") / config.name,
-            Path("experiments/gpt-pretrain"),
-            Path("."),
-        ]
-        for candidate in candidates:
-            if (candidate / "experiment.toml").exists():
-                return candidate
-        return Path(".")
-
     def _invoke_claude(self, prompt: str, cwd: Path) -> str:
         """Invoke Claude Code CLI and return its output."""
-        cmd = ["claude", "-p", prompt, "--allowedTools", "Edit,Read,Write,Bash"]
+        cmd = ["claude", "-p", prompt, "--allowedTools", "Edit,Read,Write"]
 
         if self._model:
             cmd.extend(["--model", self._model])
@@ -184,7 +174,7 @@ class LLMStrategy:
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 min timeout for LLM response
-                env={"CLAUDE_CODE_ENTRYPOINT": "skylab-strategy"},
+                env={**os.environ, "CLAUDE_CODE_ENTRYPOINT": "skylab-strategy"},
             )
             if result.returncode != 0:
                 logger.warning("Claude Code exited with code %d", result.returncode)

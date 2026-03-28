@@ -18,6 +18,7 @@ def load_experiment_config(experiment_dir: Path) -> ExperimentConfig:
     data = _parse_toml(text)
 
     config = ExperimentConfig()
+    config.experiment_dir = str(experiment_dir.resolve())
 
     # [experiment] section
     exp = data.get("experiment", {})

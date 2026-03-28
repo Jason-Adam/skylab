@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex  # noqa: F811
 import subprocess
 import time
 from dataclasses import dataclass
@@ -80,7 +81,9 @@ class RemoteRunner:
         else:
             remote_cmd = command
 
-        full_cmd = f"cd {cfg.workspace} && timeout {cfg.run_timeout} {remote_cmd}"
+        full_cmd = (
+            f"cd {shlex.quote(cfg.workspace)} && timeout {cfg.run_timeout} {remote_cmd}"
+        )
 
         start = time.monotonic()
         timed_out = False
@@ -164,7 +167,7 @@ class RemoteRunner:
             "-az",
             "--delete",
             "-e",
-            f"ssh -i {cfg.key_path} -o StrictHostKeyChecking=no",
+            f"ssh -i {shlex.quote(cfg.key_path)} -o StrictHostKeyChecking=no",
         ]
         for exc in excludes:
             cmd.extend(["--exclude", exc])

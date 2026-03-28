@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -28,8 +29,7 @@ class LocalRunner:
 
         try:
             result = subprocess.run(
-                command,
-                shell=True,
+                shlex.split(command),
                 cwd=str(exp_path),
                 capture_output=True,
                 text=True,
@@ -76,11 +76,13 @@ class LocalRunner:
 
 
 def extract_metrics(output: str) -> dict[str, float]:
-    """Extract key=value metrics from the training output summary block.
+    """Extract key=value metrics from the last training output summary block.
 
     Looks for the --- sentinel and parses lines like:
         val_bpb:          0.997900
         peak_vram_mb:     45060.2
+
+    If multiple --- blocks exist, only the last one is used.
     """
     metrics: dict[str, float] = {}
     in_summary = False
@@ -89,6 +91,7 @@ def extract_metrics(output: str) -> dict[str, float]:
         stripped = line.strip()
         if stripped == "---":
             in_summary = True
+            metrics.clear()  # Reset — only keep the last block
             continue
         if not in_summary:
             continue

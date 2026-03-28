@@ -59,13 +59,15 @@ def run(
     baseline = _run_trial(runner, exp_dir_str, config, "baseline (no modifications)")
     baseline.experiment = config.name
     baseline.strategy = "baseline"
-    baseline.kept = True
-    db.record(baseline)
 
-    if baseline.status != "success":
+    if baseline.status != "success" or baseline.val_bpb is None:
+        baseline.kept = False
+        db.record(baseline)
         logger.error("Baseline failed (%s) — cannot continue", baseline.status)
         return None
 
+    baseline.kept = True
+    db.record(baseline)
     best = baseline
     logger.info("Baseline val_bpb: %.6f", best.val_bpb)
 
@@ -101,12 +103,19 @@ def run(
         # Get current commit (before modification)
         parent_commit = _git_head(experiment_dir)
 
-        # Apply proposal (write modified files)
+        # Apply proposal (write modified files, validate filenames)
         for filename, content in proposal.modified_files.items():
+            if filename not in config.editable_files:
+                logger.warning("Skipping non-editable file: %s", filename)
+                continue
             (experiment_dir / filename).write_text(content)
 
-        # Git commit the changes
+        # Git commit the changes (skip if nothing changed)
         commit = _git_commit(experiment_dir, proposal.description)
+        if not commit:
+            logger.warning("No changes to commit — skipping trial")
+            trial_count += 1
+            continue
 
         # Execute trial
         result = _run_trial(runner, exp_dir_str, config, proposal.description)
@@ -134,17 +143,18 @@ def run(
             logger.info(
                 "REVERT (%s): val_bpb %s vs best %.6f",
                 reason,
-                f"{result.val_bpb:.6f}" if result.val_bpb else "N/A",
-                best.val_bpb,
+                f"{result.val_bpb:.6f}" if result.val_bpb is not None else "N/A",
+                f"{best.val_bpb:.6f}" if best.val_bpb is not None else "N/A",
             )
             _git_revert(experiment_dir, parent_commit)
 
         trial_count += 1
 
+    best_bpb = f"{best.val_bpb:.6f}" if best.val_bpb is not None else "N/A"
     logger.info(
-        "Done. %d trials, best val_bpb: %.6f (commit %s)",
+        "Done. %d trials, best val_bpb: %s (commit %s)",
         trial_count + 1,  # +1 for baseline
-        best.val_bpb,
+        best_bpb,
         best.commit,
     )
     return best
@@ -176,7 +186,7 @@ def _run_trial(
     peak_vram = run_result.metrics.get("peak_vram_mb")
 
     return TrialResult(
-        commit=_git_head_from_dir(experiment_dir),
+        commit=_git_head(Path(experiment_dir)),
         val_bpb=val_bpb,
         peak_vram_mb=peak_vram,
         status=status,
@@ -224,23 +234,22 @@ def _git_head(experiment_dir: Path) -> str:
     return result.stdout.strip()
 
 
-def _git_head_from_dir(experiment_dir: str) -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        cwd=experiment_dir,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout.strip()
-
-
-def _git_commit(experiment_dir: Path, message: str) -> str:
+def _git_commit(experiment_dir: Path, message: str) -> str | None:
+    """Stage and commit changes. Returns commit hash, or None if nothing to commit."""
     subprocess.run(
         ["git", "add", "-A"],
         cwd=str(experiment_dir),
         capture_output=True,
         check=True,
     )
+    # Check if there are staged changes
+    diff_check = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=str(experiment_dir),
+        capture_output=True,
+    )
+    if diff_check.returncode == 0:
+        return None  # Nothing to commit
     subprocess.run(
         ["git", "commit", "-m", message],
         cwd=str(experiment_dir),
