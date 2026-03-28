@@ -1,9 +1,13 @@
 [project]
 name = "skylab"
-version = "0.1.0"
-description = "Autonomous pretraining research swarm"
+version = "0.2.0"
+description = "Autonomous pretraining research tool"
 readme = "README.md"
 requires-python = ">=3.10"
+
+[project.scripts]
+skylab = "skylab.cli:main"
+
 dependencies = [
     "kernels>=0.11.7",
     "matplotlib>=3.10.8",
@@ -38,6 +42,8 @@ fixable = ["ALL"]
 "tests/**" = ["S101"]
 "train.py" = ["I001", "S101", "B007"]
 "prepare.py" = ["I001", "S101", "S105", "S301"]
+"experiments/**" = ["I001", "S101", "S105", "S301", "B007"]
+"skylab/**" = ["S602", "S603", "S607", "S608", "S311"]
 "analysis.ipynb" = ["I001", "F401", "F821", "B905", "B007"]
 
 [tool.ruff.format]

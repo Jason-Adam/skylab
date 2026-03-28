@@ -1,6 +1,14 @@
 """Tests for pure schedule/utility functions in schedules.py."""
 
+import sys
+from pathlib import Path
+
 import pytest
+
+# schedules.py lives in the experiment directory
+sys.path.insert(
+    0, str(Path(__file__).resolve().parent.parent / "experiments" / "gpt-pretrain")
+)
 
 from schedules import get_lr_multiplier, get_muon_momentum, get_weight_decay, has_ve
 

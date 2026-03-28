@@ -1,0 +1,30 @@
+[experiment]
+name = "gpt-pretrain"
+description = "GPT pretraining on climbmix-400b — minimize val_bpb in 5-minute trials"
+
+[search]
+editable_files = ["train.py"]
+frozen_files = ["prepare.py", "schedules.py"]
+metric = "val_bpb"
+direction = "minimize"
+metric_pattern = "^val_bpb:\\s+([\\d.]+)"
+
+[execution]
+command = "uv run train.py"
+log_file = "run.log"
+time_budget_seconds = 300
+
+[constraints]
+max_vram_gb = 48.0
+max_trial_wall_time = 600
+
+[strategy.llm]
+model = "claude-sonnet-4-20250514"
+max_context_trials = 20
+
+[strategy.sweep]
+# Example: uncomment to define a parameter sweep
+# parameters = [
+#     { name = "DEPTH", values = [6, 8, 10, 12] },
+#     { name = "ASPECT_RATIO", values = [48, 64, 80] },
+# ]
