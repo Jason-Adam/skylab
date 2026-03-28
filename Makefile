@@ -1,4 +1,4 @@
-.PHONY: sync test lint format typecheck standardize train prepare monitor remote check-gpu
+.PHONY: sync test lint format typecheck standardize run run-sweep run-remote history monitor prepare check-gpu
 
 sync:
 	uv sync --group dev
@@ -16,22 +16,30 @@ format-check:
 	uv run ruff format --check .
 
 typecheck:
-	uv run mypy tests/ schedules.py
+	uv run mypy tests/ experiments/gpt-pretrain/schedules.py skylab/
 
 standardize:
 	uv run ruff format . && uv run ruff check --fix .
 
-train:
-	uv run train.py
+# --- Skylab orchestrator commands ---
 
-prepare:
-	uv run prepare.py
+run:
+	uv run skylab run
+
+run-sweep:
+	uv run skylab run --strategy sweep
+
+run-remote:
+	uv run skylab run --runner remote
+
+history:
+	uv run skylab history
 
 monitor:
-	uv run monitor.py
+	uv run skylab monitor
 
-remote:
-	bash remote_run.sh
+prepare:
+	uv run skylab prepare
 
 check-gpu:
-	bash remote_run.sh --check
+	uv run skylab check-gpu --runner remote

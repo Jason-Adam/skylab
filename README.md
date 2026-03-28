@@ -1,136 +1,133 @@
 # skylab
 
-![teaser](progress.png)
+Autonomous pretraining research tool. Define an experiment, pick a search strategy, set a time budget, and walk away. Skylab runs the loop — propose modifications, train for 5 minutes, measure, keep or discard — and you come back to a log of experiments and a better model.
 
-Autonomous LLM training research — give an AI agent a real training setup and let it experiment overnight. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up to a log of experiments and a better model.
-
-Fork of [@karpathy's autoresearch](https://github.com/karpathy/autoresearch), extended with remote GPU execution and multi-GPU distributed training support.
+Fork of [@karpathy's autoresearch](https://github.com/karpathy/autoresearch), rebuilt as a self-contained orchestration tool with pluggable search strategies and execution backends.
 
 ## How it works
 
-Three files matter:
+Skylab separates the **tool** (orchestration, strategies, tracking) from the **experiment** (model, data, training):
 
-- **`prepare.py`** — fixed constants, data prep, tokenizer, dataloader, evaluation. Not modified.
-- **`train.py`** — model, optimizer, training loop. **The agent edits this file**.
-- **`program.md`** — agent instructions. **The human edits this file**.
+```
+skylab/                       # The orchestration tool
+├── orchestrator.py           # Core loop: propose → train → evaluate → keep/revert
+├── strategy/                 # Pluggable search strategies
+│   ├── llm.py                # Claude Code modifies train.py autonomously
+│   └── sweep.py              # Grid/random search over hyperparameter constants
+├── runner/                   # Execution backends
+│   ├── local.py              # Local GPU
+│   └── remote.py             # Remote GPU via SSH
+├── db.py                     # SQLite experiment database
+├── monitor/server.py         # Live dashboard
+└── cli.py                    # CLI entry point
 
-Training runs for a **fixed 5-minute time budget**. The metric is **val_bpb** (validation bits per byte) — lower is better, vocab-size-independent so architectural changes are fairly compared. ~12 experiments/hour, ~100 overnight.
+experiments/gpt-pretrain/     # The experiment substrate
+├── train.py                  # Model + optimizer + loop (strategies modify this)
+├── prepare.py                # Data, tokenizer, evaluation (frozen — never modified)
+├── schedules.py              # LR/momentum/decay schedules
+└── experiment.toml           # Search surface, metric, constraints
+```
+
+The metric is **val_bpb** (validation bits per byte) — lower is better, vocab-size-independent. Each trial trains for a fixed 5-minute time budget.
 
 ## Quick start
 
 **Requirements:** NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# Install uv (if needed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
 # Install dependencies
 uv sync
 
 # Download data and train tokenizer (one-time, ~2 min)
-uv run prepare.py
+uv run skylab prepare
 
-# Run a single training experiment (~5 min)
-uv run train.py
+# Run a single experiment to verify setup
+uv run experiments/gpt-pretrain/train.py
 ```
 
-## Running the agent
-
-Point your agent (Claude, Codex, etc.) at this repo and prompt:
-
-```
-Hi have a look at program.md and let's kick off a new experiment! let's do the setup first.
-```
-
-The agent reads `program.md`, sets up a branch, and loops: modify `train.py` → train → measure → keep or discard.
-
-## Remote execution
-
-Run experiments on a remote GPU machine without changing any training code. `remote_run.sh` syncs your code via SSH, runs training, and streams results back:
+## Running experiments
 
 ```bash
-# Configure your remote host
-vi remote.toml
+# LLM-guided search (Claude Code proposes modifications autonomously)
+skylab run --strategy llm --budget 8h --tag mar28
 
-# Verify connectivity and GPU
-bash remote_run.sh --check
+# Hyperparameter sweep
+skylab run --strategy sweep --max-trials 50
 
-# Run an experiment remotely (same interface as local)
-bash remote_run.sh > run.log 2>&1
-grep "^val_bpb:" run.log
+# Remote GPU execution
+skylab run --runner remote --budget 12h
+
+# View experiment history
+skylab history
+skylab history --best
+skylab history --export results.tsv
 ```
 
-The script handles SSH connectivity, code sync (rsync), data preparation on first run, and timeout enforcement on the remote side. A `Dockerfile` is included for reproducible environments (CUDA 12.8, Python 3.10, pinned dependencies).
+### Search strategies
 
-Configuration lives in `remote.toml` (gitignored):
-- `host` — SSH hostname or IP
-- `user` — SSH user (default: `ubuntu`)
-- `key_path` — path to SSH key
-- `workspace` — remote working directory
-- `num_gpus` — set >1 for multi-GPU (uses `torchrun` automatically)
+**LLM strategy** (`--strategy llm`): Spawns Claude Code with experiment history and current code. Claude reads train.py, proposes a modification, and edits the file directly. The orchestrator diffs before/after, runs training, and keeps or reverts based on val_bpb. This is the autonomous overnight workflow.
 
-## Multi-GPU distributed training
+**Sweep strategy** (`--strategy sweep`): Grid or random search over module-level constants (e.g., `DEPTH`, `MATRIX_LR`, `ASPECT_RATIO`). Configure parameters in `experiment.toml`. Good for systematic exploration of a known hyperparameter space.
 
-`train.py` supports multi-GPU training via `torchrun`. Each GPU reads a disjoint subset of training data shards, gradients are averaged across GPUs before the optimizer step. The effective batch size scales linearly with GPU count.
+### Execution backends
 
-```bash
-# Local multi-GPU (e.g. 4 GPUs)
-uv run torchrun --nproc_per_node=4 train.py
+**Local** (`--runner local`): Runs training on the local GPU via subprocess.
 
-# Remote multi-GPU (set num_gpus in remote.toml)
-bash remote_run.sh > run.log 2>&1
+**Remote** (`--runner remote`): Syncs code to a remote GPU host via SSH + rsync, runs training, streams results back. Configure `remote.toml` with host, user, key_path, and num_gpus. Multi-GPU uses `torchrun` automatically.
+
+## Experiment configuration
+
+Each experiment directory contains an `experiment.toml`:
+
+```toml
+[experiment]
+name = "gpt-pretrain"
+
+[search]
+editable_files = ["train.py"]      # What strategies can modify
+frozen_files = ["prepare.py"]      # Read-only context
+metric = "val_bpb"
+direction = "minimize"
+
+[execution]
+command = "uv run train.py"
+time_budget_seconds = 300
+
+[constraints]
+max_vram_gb = 48.0
+max_trial_wall_time = 600
 ```
 
-- **Backward compatible** — `uv run train.py` still works for single GPU, unchanged.
-- **Same output format** — only rank 0 prints and runs evaluation. `grep "^val_bpb:" run.log` works identically.
-- **Data requirement** — need at least as many training shards as GPUs. Download more with `uv run prepare.py --num-shards N`.
+## Experiment tracking
 
-## Project structure
+Results are stored in a SQLite database (`skylab.db`) in the experiment directory. Each trial records:
 
-```
-prepare.py      — constants, data prep + runtime utilities (do not modify)
-train.py        — model, optimizer, training loop (agent modifies this)
-schedules.py    — pure schedule/utility functions (importable without GPU)
-program.md      — agent instructions
-pyproject.toml  — dependencies
-remote_run.sh   — remote GPU execution script
-remote.toml     — remote host configuration (gitignored)
-Dockerfile      — reproducible CUDA environment
-Makefile        — common commands (make test, make lint, make train, etc.)
-tests/          — pytest test suite
-```
+- Git commit hash and parent commit
+- val_bpb and peak VRAM
+- Status (success, crash, timeout)
+- Code diff from parent
+- Strategy that produced it
+- Whether it was kept or reverted
+
+Export to the legacy TSV format with `skylab history --export results.tsv`.
 
 ## Development
 
 ```bash
-# Install dev dependencies (ruff, mypy, pytest, pre-commit)
-make sync
-
-# Run tests
-make test
-
-# Lint and format
-make lint
-make format
-
-# Type check
-make typecheck
-
-# Format + lint autofix in one shot
-make standardize
+make sync          # Install dev dependencies
+make test          # Run pytest
+make lint          # Ruff check
+make format        # Ruff format
+make typecheck     # mypy
+make standardize   # Format + lint autofix
 ```
 
-Pre-commit hooks are configured for ruff (format + lint) and mypy. Install with:
+## Design principles
 
-```bash
-uv run pre-commit install
-```
-
-## Design choices
-
-- **Single file to modify.** The agent only touches `train.py`. Keeps scope manageable and diffs reviewable.
-- **Fixed time budget.** 5 minutes per experiment. Makes results directly comparable regardless of what the agent changes.
-- **Self-contained.** PyTorch and a few small packages. Multi-GPU via `torchrun`, single-GPU by default.
+- **Strategy/execution separation.** Strategies propose, runners execute, the orchestrator decides. These never bleed into each other (inspired by Ray Tune/Optuna).
+- **The LLM doesn't control the search policy.** The orchestrator decides keep/revert based on the metric. The LLM's job is code generation, not search orchestration (inspired by AIDE).
+- **Git as the versioning layer.** Each trial is a commit. Revert = `git reset`. History = `git log`.
+- **Fixed time budget.** 5 minutes per trial. Makes results directly comparable regardless of what the strategy changes.
 
 ## License
 
