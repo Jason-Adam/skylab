@@ -1,0 +1,19 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.1
+    hooks:
+      - id: ruff-format
+        stages: [pre-commit]
+      - id: ruff
+        name: ruff-lint
+        args: [--fix]
+        stages: [pre-commit]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.1
+    hooks:
+      - id: mypy
+        args: [--strict]
+        additional_dependencies: []
+        pass_filenames: false
+        entry: mypy tests/
