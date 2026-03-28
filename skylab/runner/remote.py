@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import shlex  # noqa: F811
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib  # noqa: F401
+else:
+    import tomli as tomllib  # noqa: F401
 
 from skylab.runner.base import RunResult
 from skylab.runner.local import extract_metrics
@@ -34,21 +40,17 @@ def load_remote_config(experiment_dir: Path) -> RemoteConfig:
 
 
 def _parse_remote_toml(path: Path) -> RemoteConfig:
-    data: dict[str, str] = {}
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if "=" in line and not line.startswith("#"):
-            k, _, v = line.partition("=")
-            data[k.strip()] = v.strip().strip('"').strip("'")
+    with open(path, "rb") as f:
+        data = tomllib.load(f)
 
     return RemoteConfig(
         host=data["host"],
         user=data["user"],
         key_path=data["key_path"],
         workspace=data.get("workspace", "/workspace/skylab"),
-        num_gpus=int(data.get("num_gpus", "1")),
-        use_container=data.get("use_container", "false").lower() == "true",
-        run_timeout=int(data.get("run_timeout", "900")),
+        num_gpus=int(data.get("num_gpus", 1)),
+        use_container=bool(data.get("use_container", False)),
+        run_timeout=int(data.get("run_timeout", 900)),
     )
 
 
