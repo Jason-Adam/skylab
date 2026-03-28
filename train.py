@@ -88,9 +88,7 @@ def norm(x):
     return F.rms_norm(x, (x.size(-1),))
 
 
-def has_ve(layer_idx, n_layer):
-    """Returns True if layer should have Value Embedding (alternating, last always included)."""
-    return layer_idx % 2 == (n_layer - 1) % 2
+from schedules import has_ve
 
 
 def apply_rotary_emb(x, cos, sin):
@@ -692,23 +690,16 @@ if IS_DISTRIBUTED:
 # Schedules (all based on progress = training_time / TIME_BUDGET)
 
 
+from schedules import get_lr_multiplier as _get_lr_multiplier
+from schedules import get_muon_momentum, get_weight_decay as _get_weight_decay
+
+
 def get_lr_multiplier(progress):
-    if progress < WARMUP_RATIO:
-        return progress / WARMUP_RATIO if WARMUP_RATIO > 0 else 1.0
-    elif progress < 1.0 - WARMDOWN_RATIO:
-        return 1.0
-    else:
-        cooldown = (1.0 - progress) / WARMDOWN_RATIO
-        return cooldown * 1.0 + (1 - cooldown) * FINAL_LR_FRAC
-
-
-def get_muon_momentum(step):
-    frac = min(step / 300, 1)
-    return (1 - frac) * 0.85 + frac * 0.95
+    return _get_lr_multiplier(progress, WARMUP_RATIO, WARMDOWN_RATIO, FINAL_LR_FRAC)
 
 
 def get_weight_decay(progress):
-    return WEIGHT_DECAY * (1 - progress)
+    return _get_weight_decay(progress, WEIGHT_DECAY)
 
 
 # ---------------------------------------------------------------------------

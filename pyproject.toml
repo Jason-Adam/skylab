@@ -16,6 +16,46 @@ dependencies = [
     "torch==2.9.1",
 ]
 
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pre-commit",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+extend-exclude = ["analysis.ipynb"]
+
+[tool.ruff.lint]
+select = ["I", "F", "S", "B"]
+ignore = ["E501"]
+fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"train.py" = ["I001", "S101", "B007"]
+"prepare.py" = ["I001", "S101", "S105", "S301"]
+"analysis.ipynb" = ["I001", "F401", "F821", "B905", "B007"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["torch.*", "kernels.*", "rustbpe.*", "tiktoken.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.uv.sources]
 torch = [
     { index = "pytorch-cu128" },

@@ -90,11 +90,40 @@ bash remote_run.sh > run.log 2>&1
 ```
 prepare.py      — constants, data prep + runtime utilities (do not modify)
 train.py        — model, optimizer, training loop (agent modifies this)
+schedules.py    — pure schedule/utility functions (importable without GPU)
 program.md      — agent instructions
 pyproject.toml  — dependencies
 remote_run.sh   — remote GPU execution script
 remote.toml     — remote host configuration (gitignored)
 Dockerfile      — reproducible CUDA environment
+Makefile        — common commands (make test, make lint, make train, etc.)
+tests/          — pytest test suite
+```
+
+## Development
+
+```bash
+# Install dev dependencies (ruff, mypy, pytest, pre-commit)
+make sync
+
+# Run tests
+make test
+
+# Lint and format
+make lint
+make format
+
+# Type check
+make typecheck
+
+# Format + lint autofix in one shot
+make standardize
+```
+
+Pre-commit hooks are configured for ruff (format + lint) and mypy. Install with:
+
+```bash
+uv run pre-commit install
 ```
 
 ## Design choices
