@@ -49,6 +49,11 @@ class SweepStrategy:
         # Apply the parameter combination to train.py
         train_py = editable_files.get("train.py", "")
         modified = _apply_constants(train_py, combo)
+        if modified == train_py:
+            raise ValueError(
+                f"Sweep produced no changes for {combo}. "
+                "Ensure parameter names match module-level constants in train.py."
+            )
 
         desc_parts = [f"{k}={v}" for k, v in combo.items()]
         description = "sweep: " + ", ".join(desc_parts)

@@ -79,7 +79,8 @@ def _build_prompt(
     parts.append(f"\n## Goal: {config.direction} {config.metric}")
     parts.append(f"Current best: {_best_metric(history, config)}")
 
-    parts.append("\nMake ONE focused change. Edit train.py now.")
+    editable_list = ", ".join(config.editable_files)
+    parts.append(f"\nMake ONE focused change. Edit {editable_list} now.")
 
     return "\n".join(parts)
 

@@ -42,4 +42,4 @@ prepare:
 	uv run skylab prepare
 
 check-gpu:
-	uv run skylab run --runner remote --max-trials 0
+	uv run skylab check-gpu --runner remote

@@ -110,8 +110,10 @@ def run(
                 continue
             (experiment_dir / filename).write_text(content)
 
-        # Git commit the changes (skip if nothing changed)
-        commit = _git_commit(experiment_dir, proposal.description)
+        # Git commit the changes (skip if nothing changed, stage only editable files)
+        commit = _git_commit(
+            experiment_dir, proposal.description, config.editable_files
+        )
         if not commit:
             logger.warning("No changes to commit — skipping trial")
             trial_count += 1
@@ -234,14 +236,24 @@ def _git_head(experiment_dir: Path) -> str:
     return result.stdout.strip()
 
 
-def _git_commit(experiment_dir: Path, message: str) -> str | None:
+def _git_commit(
+    experiment_dir: Path, message: str, files: list[str] | None = None
+) -> str | None:
     """Stage and commit changes. Returns commit hash, or None if nothing to commit."""
-    subprocess.run(
-        ["git", "add", "-A"],
-        cwd=str(experiment_dir),
-        capture_output=True,
-        check=True,
-    )
+    if files:
+        subprocess.run(
+            ["git", "add", "--"] + files,
+            cwd=str(experiment_dir),
+            capture_output=True,
+            check=True,
+        )
+    else:
+        subprocess.run(
+            ["git", "add", "-A"],
+            cwd=str(experiment_dir),
+            capture_output=True,
+            check=True,
+        )
     # Check if there are staged changes
     diff_check = subprocess.run(
         ["git", "diff", "--cached", "--quiet"],

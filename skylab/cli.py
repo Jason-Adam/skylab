@@ -92,6 +92,20 @@ def main(argv: list[str] | None = None) -> None:
         default="experiments/gpt-pretrain",
     )
 
+    # --- skylab check-gpu ---
+    gpu_parser = sub.add_parser("check-gpu", help="Check GPU availability")
+    gpu_parser.add_argument(
+        "--runner",
+        choices=["local", "remote"],
+        default="local",
+        help="Which runner to check (default: local)",
+    )
+    gpu_parser.add_argument(
+        "experiment_dir",
+        nargs="?",
+        default="experiments/gpt-pretrain",
+    )
+
     args = parser.parse_args(argv)
 
     # Set up logging
@@ -114,6 +128,8 @@ def main(argv: list[str] | None = None) -> None:
         _cmd_monitor(args)
     elif args.command == "prepare":
         _cmd_prepare(args)
+    elif args.command == "check-gpu":
+        _cmd_check_gpu(args)
 
 
 def _cmd_run(args: argparse.Namespace) -> None:
@@ -251,9 +267,29 @@ def _cmd_prepare(args: argparse.Namespace) -> None:
 
     experiment_dir = Path(args.experiment_dir)
     subprocess.run(
-        ["uv", "run", str(experiment_dir / "prepare.py")],
+        ["uv", "run", "prepare.py"],
         cwd=str(experiment_dir),
     )
+
+
+def _cmd_check_gpu(args: argparse.Namespace) -> None:
+    experiment_dir = Path(args.experiment_dir)
+
+    if args.runner == "remote":
+        from skylab.runner.remote import RemoteRunner, load_remote_config
+
+        remote_config = load_remote_config(experiment_dir)
+        runner = RemoteRunner(remote_config)
+    else:
+        from skylab.runner.local import LocalRunner
+
+        runner = LocalRunner()  # type: ignore[assignment]
+
+    if runner.check():
+        print("GPU available.")
+    else:
+        print("GPU not available.", file=sys.stderr)
+        sys.exit(1)
 
 
 def _print_trial(trial) -> None:

@@ -146,7 +146,7 @@ class RemoteRunner:
             "-i",
             cfg.key_path,
             "-o",
-            "StrictHostKeyChecking=no",
+            "StrictHostKeyChecking=accept-new",
             "-o",
             "ConnectTimeout=10",
             f"{cfg.user}@{cfg.host}",
@@ -169,7 +169,7 @@ class RemoteRunner:
             "-az",
             "--delete",
             "-e",
-            f"ssh -i {shlex.quote(cfg.key_path)} -o StrictHostKeyChecking=no",
+            f"ssh -i {shlex.quote(cfg.key_path)} -o StrictHostKeyChecking=accept-new",
         ]
         for exc in excludes:
             cmd.extend(["--exclude", exc])
