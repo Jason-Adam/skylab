@@ -1,7 +1,9 @@
-"""Local GPU execution backend."""
+"""Local execution backend — supports CUDA, MPS, and CPU."""
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 import shlex
 import subprocess
@@ -9,6 +11,39 @@ import time
 from pathlib import Path
 
 from skylab.runner.base import RunResult
+
+logger = logging.getLogger(__name__)
+
+
+def _detect_local_device() -> str:
+    """Detect the best available local device."""
+    # Check for NVIDIA GPU
+    try:
+        result = subprocess.run(
+            ["nvidia-smi"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return "cuda"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Check for MPS (Apple Silicon)
+    try:
+        result = subprocess.run(
+            ["python3", "-c", "import torch; print(torch.backends.mps.is_available())"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.stdout.strip() == "True":
+            return "mps"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    return "cpu"
 
 
 class LocalRunner:
@@ -27,6 +62,9 @@ class LocalRunner:
         start = time.monotonic()
         timed_out = False
 
+        # Pass SKYLAB_DEVICE through to the subprocess if set
+        env = os.environ.copy()
+
         try:
             result = subprocess.run(
                 shlex.split(command),
@@ -34,6 +72,7 @@ class LocalRunner:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=env,
             )
             exit_code = result.returncode
             stdout = result.stdout
@@ -62,17 +101,10 @@ class LocalRunner:
         )
 
     def check(self) -> bool:
-        """Check if a GPU is available locally."""
-        try:
-            result = subprocess.run(
-                ["nvidia-smi"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            return result.returncode == 0
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            return False
+        """Check if a compute device is available locally (CUDA, MPS, or CPU)."""
+        device = _detect_local_device()
+        logger.info("Local device: %s", device)
+        return True  # CPU is always available
 
 
 def extract_metrics(output: str) -> dict[str, float]:
