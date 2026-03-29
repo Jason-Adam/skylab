@@ -145,8 +145,8 @@ def _cmd_run(args: argparse.Namespace) -> None:
     from skylab.db import Database
     from skylab.orchestrator import run
 
-    # Set device for training subprocess to pick up
-    if args.device != "auto":
+    # Set device for training subprocess to pick up (local runner only)
+    if args.device != "auto" and args.runner == "local":
         os.environ["SKYLAB_DEVICE"] = args.device
 
     experiment_dir = Path(args.experiment_dir)
@@ -299,9 +299,7 @@ def _cmd_check_gpu(args: argparse.Namespace) -> None:
 
     if runner.check():
         if args.runner == "local":
-            from skylab.runner.local import _detect_local_device
-
-            print(f"Device available: {_detect_local_device()}")
+            print(f"Device available: {runner.detected_device}")
         else:
             print("GPU available.")
     else:

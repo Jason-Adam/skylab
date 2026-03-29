@@ -7,6 +7,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -16,7 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 def _detect_local_device() -> str:
-    """Detect the best available local device."""
+    """Detect the best available local device.
+
+    Honors SKYLAB_DEVICE env var if set; otherwise probes hardware.
+    """
+    override = os.environ.get("SKYLAB_DEVICE")
+    if override and override in {"cuda", "mps", "cpu"}:
+        return override
+
     # Check for NVIDIA GPU
     try:
         result = subprocess.run(
@@ -33,7 +41,11 @@ def _detect_local_device() -> str:
     # Check for MPS (Apple Silicon)
     try:
         result = subprocess.run(
-            ["python3", "-c", "import torch; print(torch.backends.mps.is_available())"],
+            [
+                sys.executable,
+                "-c",
+                "import torch; print(torch.backends.mps.is_available())",
+            ],
             capture_output=True,
             text=True,
             timeout=10,
@@ -102,8 +114,8 @@ class LocalRunner:
 
     def check(self) -> bool:
         """Check if a compute device is available locally (CUDA, MPS, or CPU)."""
-        device = _detect_local_device()
-        logger.info("Local device: %s", device)
+        self.detected_device = _detect_local_device()
+        logger.info("Local device: %s", self.detected_device)
         return True  # CPU is always available
 
 

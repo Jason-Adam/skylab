@@ -30,6 +30,11 @@ IS_DISTRIBUTED = WORLD_SIZE > 1
 # --- Device detection ---
 def _detect_device() -> tuple[torch.device, str, bool]:
     forced = os.environ.get("SKYLAB_DEVICE", "auto")
+    valid_devices = {"auto", "cuda", "mps", "cpu"}
+    if forced not in valid_devices:
+        raise ValueError(
+            f"Invalid SKYLAB_DEVICE={forced!r}. Expected one of {sorted(valid_devices)}."
+        )
     if forced != "auto":
         dev = forced
     elif torch.cuda.is_available():
@@ -159,9 +164,9 @@ def _sdpa_forward(q, k, v, window_size):
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
     else:
         # Sliding window + causal mask
-        rows = torch.arange(T, device=q.device)
-        cols = torch.arange(T, device=q.device)
-        mask = (cols <= rows.unsqueeze(0)) & (rows.unsqueeze(0) - cols < win)
+        rows = torch.arange(T, device=q.device)[:, None]  # (T, 1)
+        cols = torch.arange(T, device=q.device)[None, :]  # (1, T)
+        mask = (cols <= rows) & (rows - cols < win)  # (T, T)
         y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
 
     # Back to (B, T, n_heads, head_dim)
