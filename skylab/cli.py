@@ -56,6 +56,12 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Git branch tag (creates skylab/<tag> branch)",
     )
+    run_parser.add_argument(
+        "--device",
+        choices=["auto", "cuda", "mps", "cpu"],
+        default="auto",
+        help="Compute device (default: auto-detect)",
+    )
 
     # --- skylab history ---
     hist_parser = sub.add_parser("history", help="Show experiment history")
@@ -133,9 +139,15 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _cmd_run(args: argparse.Namespace) -> None:
+    import os
+
     from skylab.config import load_experiment_config
     from skylab.db import Database
     from skylab.orchestrator import run
+
+    # Set device for training subprocess to pick up (local runner only)
+    if args.device != "auto" and args.runner == "local":
+        os.environ["SKYLAB_DEVICE"] = args.device
 
     experiment_dir = Path(args.experiment_dir)
     config = load_experiment_config(experiment_dir)
@@ -286,7 +298,10 @@ def _cmd_check_gpu(args: argparse.Namespace) -> None:
         runner = LocalRunner()  # type: ignore[assignment]
 
     if runner.check():
-        print("GPU available.")
+        if args.runner == "local":
+            print(f"Device available: {runner.detected_device}")
+        else:
+            print("GPU available.")
     else:
         print("GPU not available.", file=sys.stderr)
         sys.exit(1)
